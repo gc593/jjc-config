@@ -116,7 +116,8 @@ const App: React.FC = () => {
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     'sec-event': false,
-    'sec-copy': true,
+    'sec-copy': false,
+    'sec-inc': true,
     'sec-colors': true,
     'sec-sections': true,
   });
@@ -124,6 +125,7 @@ const App: React.FC = () => {
   const [device, setDevice] = useState<DeviceType>('desktop');
   const [toast, setToast] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [genStep, setGenStep] = useState(0);
 
   const toggleSection = (id: string) => {
     setCollapsedSections(prev => ({ ...prev, [id]: !prev[id] }));
@@ -153,6 +155,20 @@ const App: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  useEffect(() => {
+    let interval: any;
+    if (isGenerating) {
+      interval = setInterval(() => {
+        setGenStep(s => (s + 1) % 4);
+      }, 1500);
+    } else {
+      setGenStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
+
+  const loadingMessages = ["Drafting...", "Polishing...", "Translating...", "Optimizing..."];
+
   const generateWithAI = async () => {
     if (!config.eventNameEn) {
       showToast("Please enter an event name first!");
@@ -164,28 +180,35 @@ const App: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Act as a senior marketing strategist for the Johnson Japan Club (JJC) at Cornell University's SC Johnson College of Business.
-        The audience is MBA students who are busy, recruitment-focused, but looking for authentic cultural community.
+        contents: `Act as a senior event marketer for the Johnson Japan Club at Cornell. 
         Event Title: "${config.eventNameEn}"
         
-        Generate professional, premium event copy.
-        Return strictly JSON with the following schema:
+        Write high-end, elite, and catchy marketing copy. 
+        REQUIRED: 
+        1. Translate the event name to cool, professional Japanese for 'eventNameJp'.
+        2. Create unique 'expHeadline' and 'expDesc' for the theme.
+        
+        Return JSON matching this schema:
         {
-          "heroTagline": "A compelling 2-sentence intro",
-          "expHeadline": "A catchy section title (e.g. 'Beyond the Classroom')",
-          "expDesc": "A short, engaging paragraph describing the vibe",
-          "inc1": "Benefit 1", "inc1d": "Description 1",
-          "inc2": "Benefit 2", "inc2d": "Description 2",
-          "inc3": "Benefit 3", "inc3d": "Description 3",
-          "inc4": "Benefit 4", "inc4d": "Description 4",
-          "quoteText": "A powerful quote about the event",
-          "quoteAttr": "Attribute to 'JJC Executive Board' or similar"
+          "eventNameJp": "Japanese translation of event name",
+          "heroTagline": "A punchy 2-sentence hook",
+          "expHeadline": "A creative section title for the experience section",
+          "expDesc": "A descriptive paragraph explaining the vibe and experience",
+          "inc1": "Feature 1", "inc1d": "Description 1",
+          "inc2": "Feature 2", "inc2d": "Description 2",
+          "inc3": "Feature 3", "inc3d": "Description 3",
+          "inc4": "Feature 4", "inc4d": "Description 4",
+          "quoteText": "A powerful quote about club culture",
+          "quoteAttr": "Attribute to JJC Executive Board"
         }`,
         config: {
+          thinkingConfig: { thinkingBudget: 0 },
+          temperature: 0.8,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
+              eventNameJp: { type: Type.STRING },
               heroTagline: { type: Type.STRING },
               expHeadline: { type: Type.STRING },
               expDesc: { type: Type.STRING },
@@ -199,20 +222,37 @@ const App: React.FC = () => {
               inc4d: { type: Type.STRING },
               quoteText: { type: Type.STRING },
               quoteAttr: { type: Type.STRING }
-            }
+            },
+            required: ["eventNameJp", "heroTagline", "expHeadline", "expDesc", "inc1", "inc2", "inc3", "inc4", "quoteText"]
           }
         }
       });
 
-      const result = JSON.parse(response.text || '{}');
-      setConfig(prev => ({
-        ...prev,
-        ...result
+      const rawJson = response.text || '{}';
+      const result = JSON.parse(rawJson);
+      
+      setConfig(prev => ({ 
+        ...prev, 
+        eventNameJp: result.eventNameJp || prev.eventNameJp,
+        heroTagline: result.heroTagline || prev.heroTagline,
+        expHeadline: result.expHeadline || prev.expHeadline,
+        expDesc: result.expDesc || prev.expDesc,
+        inc1: result.inc1 || prev.inc1,
+        inc1d: result.inc1d || prev.inc1d,
+        inc2: result.inc2 || prev.inc2,
+        inc2d: result.inc2d || prev.inc2d,
+        inc3: result.inc3 || prev.inc3,
+        inc3d: result.inc3d || prev.inc3d,
+        inc4: result.inc4 || prev.inc4,
+        inc4d: result.inc4d || prev.inc4d,
+        quoteText: result.quoteText || prev.quoteText,
+        quoteAttr: result.quoteAttr || prev.quoteAttr
       }));
-      showToast("AI copy generated successfully!");
+      
+      showToast("AI copy and Japanese name generated!");
     } catch (error) {
       console.error("AI Error:", error);
-      showToast("Failed to generate AI copy.");
+      showToast("Generation failed. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -313,10 +353,13 @@ const App: React.FC = () => {
             </Field>
           </SidebarSection>
 
-          {/* AI Copy Assistant */}
+          {/* Turbo AI Copy Assistant */}
           <div className="mb-6 p-4 bg-[#222] border border-[#333] rounded-lg">
-             <h3 className="text-[10px] font-bold tracking-widest text-white uppercase mb-2">AI Copy Assistant</h3>
-             <p className="text-[11px] text-[#888] mb-4 leading-relaxed">Let Gemini generate professional club-branded copy based on your event name.</p>
+             <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[10px] font-bold tracking-widest text-white uppercase">Turbo AI Assistant</h3>
+                <span className="text-[9px] bg-[#c23b22] text-white px-1.5 py-0.5 rounded font-black tracking-tighter">ULTRA FAST</span>
+             </div>
+             <p className="text-[11px] text-[#888] mb-4 leading-relaxed">Generates professional copy and translates the event name to Japanese.</p>
              <button
               onClick={generateWithAI}
               disabled={isGenerating}
@@ -329,10 +372,10 @@ const App: React.FC = () => {
                {isGenerating ? (
                  <>
                    <span className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                   Writing Copy...
+                   {loadingMessages[genStep]}
                  </>
                ) : (
-                 <>✨ Generate with Gemini</>
+                 <>✨ Instant Generate</>
                )}
              </button>
           </div>
@@ -369,9 +412,31 @@ const App: React.FC = () => {
             </Field>
           </SidebarSection>
 
+          {/* What's Included */}
+          <SidebarSection 
+            title="3. What's Included" 
+            id="sec-inc" 
+            isCollapsed={collapsedSections['sec-inc']} 
+            onToggle={toggleSection}
+          >
+            <div className="space-y-6">
+              {(['1', '2', '3', '4']).map(num => (
+                <div key={num} className="p-3 bg-[#111] border border-[#2a2a2a] rounded-md">
+                   <div className="text-[9px] font-black text-[#c23b22] mb-2">INCLUSION 0{num}</div>
+                   <Field label="Title">
+                     <Input value={(config as any)[`inc${num}`]} onChange={e => updateConfig(`inc${num}` as any, e.target.value)} />
+                   </Field>
+                   <Field label="Description">
+                     <Input value={(config as any)[`inc${num}d`]} onChange={e => updateConfig(`inc${num}d` as any, e.target.value)} />
+                   </Field>
+                </div>
+              ))}
+            </div>
+          </SidebarSection>
+
           {/* Colors */}
           <SidebarSection 
-            title="3. Branding & Colors" 
+            title="4. Branding & Colors" 
             id="sec-colors" 
             isCollapsed={collapsedSections['sec-colors']} 
             onToggle={toggleSection}
@@ -413,7 +478,7 @@ const App: React.FC = () => {
 
           {/* Sections Toggle */}
           <SidebarSection 
-            title="4. Visibility & Flow" 
+            title="5. Visibility & Flow" 
             id="sec-sections" 
             isCollapsed={collapsedSections['sec-sections']} 
             onToggle={toggleSection}
