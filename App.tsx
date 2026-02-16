@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { EventConfig, DeviceType, ThemePreset } from './types';
 import { generateHTML } from './utils/template';
+import { GoogleGenAI, Type } from "@google/genai";
 
 // Reusable Components
 const SidebarSection: React.FC<{
@@ -90,7 +91,7 @@ const App: React.FC = () => {
     transitionSub: 'One moment, one encounter',
     expHeadline: "This isn't another club event.",
     expDesc: "It's a private room, a full song catalog, a table full of food, and three hours where nobody talks about recruiting.",
-    quoteText: '"INSERT HOT QUOTE."',
+    quoteText: '"We\'re not the old JJC. We\'re building something people actually want to show up to."',
     quoteAttr: 'JJC Executive Board · 2025',
     inc1: 'Private karaoke room',
     inc1d: 'Full catalog: English, Japanese, Korean, and more.',
@@ -122,6 +123,7 @@ const App: React.FC = () => {
 
   const [device, setDevice] = useState<DeviceType>('desktop');
   const [toast, setToast] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const toggleSection = (id: string) => {
     setCollapsedSections(prev => ({ ...prev, [id]: !prev[id] }));
@@ -151,13 +153,78 @@ const App: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const generateWithAI = async () => {
+    if (!config.eventNameEn) {
+      showToast("Please enter an event name first!");
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Act as a senior marketing strategist for the Johnson Japan Club (JJC) at Cornell University's SC Johnson College of Business.
+        The audience is MBA students who are busy, recruitment-focused, but looking for authentic cultural community.
+        Event Title: "${config.eventNameEn}"
+        
+        Generate professional, premium event copy.
+        Return strictly JSON with the following schema:
+        {
+          "heroTagline": "A compelling 2-sentence intro",
+          "expHeadline": "A catchy section title (e.g. 'Beyond the Classroom')",
+          "expDesc": "A short, engaging paragraph describing the vibe",
+          "inc1": "Benefit 1", "inc1d": "Description 1",
+          "inc2": "Benefit 2", "inc2d": "Description 2",
+          "inc3": "Benefit 3", "inc3d": "Description 3",
+          "inc4": "Benefit 4", "inc4d": "Description 4",
+          "quoteText": "A powerful quote about the event",
+          "quoteAttr": "Attribute to 'JJC Executive Board' or similar"
+        }`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              heroTagline: { type: Type.STRING },
+              expHeadline: { type: Type.STRING },
+              expDesc: { type: Type.STRING },
+              inc1: { type: Type.STRING },
+              inc1d: { type: Type.STRING },
+              inc2: { type: Type.STRING },
+              inc2d: { type: Type.STRING },
+              inc3: { type: Type.STRING },
+              inc3d: { type: Type.STRING },
+              inc4: { type: Type.STRING },
+              inc4d: { type: Type.STRING },
+              quoteText: { type: Type.STRING },
+              quoteAttr: { type: Type.STRING }
+            }
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text || '{}');
+      setConfig(prev => ({
+        ...prev,
+        ...result
+      }));
+      showToast("AI copy generated successfully!");
+    } catch (error) {
+      console.error("AI Error:", error);
+      showToast("Failed to generate AI copy.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const exportHTMLFile = () => {
     const html = generateHTML(config);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'jjc-event.html';
+    a.download = `${config.eventNameEn.toLowerCase().replace(/\s+/g, '-')}.html`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Downloaded index.html!');
@@ -205,7 +272,7 @@ const App: React.FC = () => {
         <div className="p-6">
           {/* Event Info */}
           <SidebarSection 
-            title="Event Info" 
+            title="1. Event Info" 
             id="sec-event" 
             isCollapsed={collapsedSections['sec-event']} 
             onToggle={toggleSection}
@@ -246,9 +313,33 @@ const App: React.FC = () => {
             </Field>
           </SidebarSection>
 
+          {/* AI Copy Assistant */}
+          <div className="mb-6 p-4 bg-[#222] border border-[#333] rounded-lg">
+             <h3 className="text-[10px] font-bold tracking-widest text-white uppercase mb-2">AI Copy Assistant</h3>
+             <p className="text-[11px] text-[#888] mb-4 leading-relaxed">Let Gemini generate professional club-branded copy based on your event name.</p>
+             <button
+              onClick={generateWithAI}
+              disabled={isGenerating}
+              className={`w-full py-2.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-2 transition-all shadow-xl ${
+                isGenerating 
+                  ? 'bg-[#333] text-[#555] cursor-not-allowed' 
+                  : 'bg-white text-black hover:scale-[1.02] hover:bg-[#eee]'
+              }`}
+             >
+               {isGenerating ? (
+                 <>
+                   <span className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                   Writing Copy...
+                 </>
+               ) : (
+                 <>✨ Generate with Gemini</>
+               )}
+             </button>
+          </div>
+
           {/* Copy */}
           <SidebarSection 
-            title="Copy & Messaging" 
+            title="2. Copy & Messaging" 
             id="sec-copy" 
             isCollapsed={collapsedSections['sec-copy']} 
             onToggle={toggleSection}
@@ -280,7 +371,7 @@ const App: React.FC = () => {
 
           {/* Colors */}
           <SidebarSection 
-            title="Branding & Colors" 
+            title="3. Branding & Colors" 
             id="sec-colors" 
             isCollapsed={collapsedSections['sec-colors']} 
             onToggle={toggleSection}
@@ -322,7 +413,7 @@ const App: React.FC = () => {
 
           {/* Sections Toggle */}
           <SidebarSection 
-            title="Visibility & Flow" 
+            title="4. Visibility & Flow" 
             id="sec-sections" 
             isCollapsed={collapsedSections['sec-sections']} 
             onToggle={toggleSection}
